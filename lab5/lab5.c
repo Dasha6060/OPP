@@ -200,7 +200,9 @@ int main(int argc, char** argv) {
     double globalRes = 0;
     pthread_mutex_t resMutex; pthread_mutex_init(&resMutex, NULL);
     int running = 1;
-    args.globalRes = &globalRes; args.resMutex = &resMutex; args.running = &running;
+    args.globalRes = &globalRes; 
+    args.resMutex = &resMutex; 
+    args.running = &running;
     for (int i = 0; i < THREADS; i++) pthread_create(&threads[i], NULL, workerFunc, &args);
 
     double t_total = MPI_Wtime(), sum_imbalance = 0;
