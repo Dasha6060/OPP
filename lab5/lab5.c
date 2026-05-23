@@ -164,7 +164,8 @@ int requestTasks(TaskQueue* q, int rank, int size) {
         double deadline = MPI_Wtime() + 0.04;
         int arrived = 0;
         while (!arrived && MPI_Wtime() < deadline) {
-            int flag; MPI_Status st;
+            int flag; 
+            MPI_Status st;
             MPI_Iprobe(target, TAG_TASKS, MPI_COMM_WORLD, &flag, &st);
             if (flag) arrived = 1; else { serveRequests(q, 0); usleep(100); }
         }
@@ -196,16 +197,15 @@ int main(int argc, char** argv) {
 
     TaskQueue queue; initQueue(&queue, TOTAL_TASKS + 500);
     pthread_t threads[THREADS];
-    WorkerArgs args = { &queue, NULL, NULL, NULL };
     double globalRes = 0;
-    pthread_mutex_t resMutex; pthread_mutex_init(&resMutex, NULL);
+    pthread_mutex_t resMutex; 
+    pthread_mutex_init(&resMutex, NULL);
     int running = 1;
-    args.globalRes = &globalRes; 
-    args.resMutex = &resMutex; 
-    args.running = &running;
+    WorkerArgs args = { &queue, &globalRes, &resMutex, &running };
     for (int i = 0; i < THREADS; i++) pthread_create(&threads[i], NULL, workerFunc, &args);
 
-    double t_total = MPI_Wtime(), sum_imbalance = 0;
+    double t_total = MPI_Wtime();
+    sum_imbalance = 0;
     
     for (int iter = 0; iter < ITERATIONS; iter++) {
         generateTasks(&queue, rank, size, iter);
@@ -216,7 +216,8 @@ int main(int argc, char** argv) {
 
         MPI_Barrier(MPI_COMM_WORLD);
         double t_iter = MPI_Wtime();
-        int iterDone = 0, fails = 0;
+        int iterDone = 0;
+        int fails = 0;
         int done_count = 0; 
 
         while (1) {
@@ -266,7 +267,8 @@ int main(int argc, char** argv) {
         pthread_mutex_unlock(&queue.mutex);
         
         long long exec = local_started - local_left;
-        long long max_l = 0, sum_l = 0;
+        long long max_l = 0;
+        long long sum_l = 0;
         
         MPI_Reduce(&exec, &max_l, 1, MPI_LONG_LONG, MPI_MAX, 0, MPI_COMM_WORLD);
         MPI_Reduce(&exec, &sum_l, 1, MPI_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
