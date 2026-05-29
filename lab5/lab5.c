@@ -37,6 +37,7 @@ typedef struct {
     double* globalRes;
     pthread_mutex_t* resMutex;
     int* running;
+    long long* completedWeight; 
 } WorkerArgs;
 
 void initQueue(TaskQueue* q, int capacity) {
@@ -92,6 +93,7 @@ void* workerFunc(void* arg) {
             for (int i = 0; i < task.repeatNum; i++) local_sum += sqrt(i);
             pthread_mutex_lock(args->resMutex);
             *(args->globalRes) += local_sum;
+            *(args->completedWeight) += task.repeatNum;  
             pthread_mutex_unlock(args->resMutex);
             doneTask(args->queue);
         } else {
@@ -130,7 +132,8 @@ void generateTasks(TaskQueue* q, int rank, int size, int iter) {
 }
 
 void serveRequests(TaskQueue* q, int iterDone) {
-    int flag; MPI_Status status;
+    int flag; 
+    MPI_Status status;
     MPI_Iprobe(MPI_ANY_SOURCE, TAG_REQUEST, MPI_COMM_WORLD, &flag, &status);
     if (!flag) return;
     int req_rank;
@@ -195,25 +198,23 @@ int main(int argc, char** argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
 
-    TaskQueue queue; initQueue(&queue, TOTAL_TASKS + 500);
+    TaskQueue queue; 
+    initQueue(&queue, TOTAL_TASKS + 500);
     pthread_t threads[THREADS];
     double globalRes = 0;
     pthread_mutex_t resMutex; 
     pthread_mutex_init(&resMutex, NULL);
     int running = 1;
-    WorkerArgs args = { &queue, &globalRes, &resMutex, &running };
+    long long local_completed_weight = 0;
+    WorkerArgs args = { &queue, &globalRes, &resMutex, &running, &local_completed_weight }; 
     for (int i = 0; i < THREADS; i++) pthread_create(&threads[i], NULL, workerFunc, &args);
 
     double t_total = MPI_Wtime();
-    sum_imbalance = 0;
+    double sum_imbalance = 0;  
     
     for (int iter = 0; iter < ITERATIONS; iter++) {
         generateTasks(&queue, rank, size, iter);
-        long long local_started = 0;
-        pthread_mutex_lock(&queue.mutex);
-        for(int i = 0; i < queue.size; i++) local_started += queue.tasks[i].repeatNum;
-        pthread_mutex_unlock(&queue.mutex);
-
+        local_completed_weight = 0;  
         MPI_Barrier(MPI_COMM_WORLD);
         double t_iter = MPI_Wtime();
         int iterDone = 0;
@@ -261,12 +262,8 @@ int main(int argc, char** argv) {
 
         MPI_Barrier(MPI_COMM_WORLD);
         
-        long long local_left = 0;
-        pthread_mutex_lock(&queue.mutex);
-        for(int i = 0; i < queue.size; i++) local_left += queue.tasks[i].repeatNum;
-        pthread_mutex_unlock(&queue.mutex);
+        long long exec = local_completed_weight;  
         
-        long long exec = local_started - local_left;
         long long max_l = 0;
         long long sum_l = 0;
         
